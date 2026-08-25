@@ -217,6 +217,10 @@ function pairEnglishWithKorean(englishLines: string[]) {
   return englishLines.map((line) => `${line} (${roughTranslateToKorean(line)})`);
 }
 
+function fallbackUrlFor(title: string) {
+  return `https://news.google.com/search?q=${encodeURIComponent(title)}`;
+}
+
 function scoreItem(text: string, publishedAt: string, region: Region, category: Category) {
   const lower = text.toLowerCase();
   const urgentHits = urgentKeywords.filter((keyword) => lower.includes(keyword.toLowerCase())).length;
@@ -267,7 +271,7 @@ async function readSource(source: Source) {
       category,
       urgency,
       publishedAt,
-      url: getTagValue(item, "link") || "#",
+      url: getTagValue(item, "link") || fallbackUrlFor(originalTitle),
       signals: [
         source.region === "domestic" ? "국내" : "해외",
         category === "politics" ? "정책 영향" : category === "economy" ? "시장 영향" : "생활 영향",

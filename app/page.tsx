@@ -42,7 +42,7 @@ const fallbackNews: NewsItem[] = [
     category: "politics",
     urgency: 86,
     publishedAt: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
-    url: "#",
+    url: "https://news.google.com/search?q=%EA%B5%AD%ED%9A%8C%20%EC%98%88%EC%82%B0%EC%95%88%20%ED%98%91%EC%83%81",
     signals: ["정책 영향", "긴급 협상", "국내"],
   },
   {
@@ -64,7 +64,7 @@ const fallbackNews: NewsItem[] = [
     category: "economy",
     urgency: 79,
     publishedAt: new Date(Date.now() - 1000 * 60 * 42).toISOString(),
-    url: "#",
+    url: "https://news.google.com/search?q=Major%20currencies%20swing%20after%20central%20bank%20remarks",
     signals: ["시장 영향", "해외", "금리"],
   },
 ];
