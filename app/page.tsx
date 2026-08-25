@@ -72,8 +72,9 @@ const regionLabels: Record<Region | "all", string> = {
 const categoryOptions: Array<Category | "all"> = ["all", "politics", "economy", "society"];
 const regionOptions: Array<Region | "all"> = ["all", "domestic", "global"];
 
-function timeAgo(value: string) {
-  const diff = Date.now() - new Date(value).getTime();
+function timeAgo(value: string, now: number | null) {
+  if (!now) return "방금 전";
+  const diff = now - new Date(value).getTime();
   const minutes = Math.max(1, Math.round(diff / 60000));
   if (minutes < 60) return `${minutes}분 전`;
   const hours = Math.round(minutes / 60);
@@ -88,9 +89,11 @@ export default function Home() {
   const [region, setRegion] = useState<Region | "all">("all");
   const [threshold, setThreshold] = useState(70);
   const [onlyBreaking, setOnlyBreaking] = useState(false);
+  const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
+    setNow(Date.now());
 
     async function loadNews() {
       try {
@@ -248,10 +251,10 @@ export default function Home() {
               </div>
               <div>
                 <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#657065]">
-                  <span>{index + 1}순위</span>
-                  <span>{regionLabels[item.region]}</span>
-                  <span>{categoryLabels[item.category]}</span>
-                  <span>{timeAgo(item.publishedAt)}</span>
+                          <span>{index + 1}순위</span>
+                          <span>{regionLabels[item.region]}</span>
+                          <span>{categoryLabels[item.category]}</span>
+                          <span>{timeAgo(item.publishedAt, now)}</span>
                   <span>{item.source}</span>
                 </div>
                 <h2 className="mt-2 text-xl font-semibold leading-snug text-[#17201b]">
