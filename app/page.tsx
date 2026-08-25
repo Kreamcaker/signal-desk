@@ -8,7 +8,13 @@ type Category = "politics" | "economy" | "society";
 type NewsItem = {
   id: string;
   title: string;
+  originalTitle: string;
+  translatedTitle: string | null;
   summary: string;
+  summaryLines: string[];
+  originalSummaryLines: string[];
+  translatedSummaryLines: string[] | null;
+  originalLanguage: "ko" | "en";
   source: string;
   region: Region;
   category: Category;
@@ -22,7 +28,25 @@ const fallbackNews: NewsItem[] = [
   {
     id: "fallback-1",
     title: "국회, 예산안 핵심 쟁점 협상 재개",
+    originalTitle: "국회, 예산안 핵심 쟁점 협상 재개",
+    translatedTitle: null,
     summary: "여야가 민생 예산과 세입 전망을 놓고 막판 조율에 들어갔습니다.",
+    summaryLines: [
+      "핵심 이슈: 여야가 예산안 쟁점 조율을 재개했습니다.",
+      "영향 범위: 국내 정치와 민생 예산 집행 일정에 영향을 줄 수 있습니다.",
+      "중요도 판단: 86점으로 우선 확인이 필요한 기사입니다.",
+      "관련 맥락: 세입 전망과 지출 우선순위를 둘러싼 협상이 이어지고 있습니다.",
+      "확인 포인트: 합의 시점, 증액·감액 항목, 후속 표결 일정을 확인하세요.",
+    ],
+    originalSummaryLines: [
+      "핵심 이슈: 여야가 예산안 쟁점 조율을 재개했습니다.",
+      "영향 범위: 국내 정치와 민생 예산 집행 일정에 영향을 줄 수 있습니다.",
+      "중요도 판단: 86점으로 우선 확인이 필요한 기사입니다.",
+      "관련 맥락: 세입 전망과 지출 우선순위를 둘러싼 협상이 이어지고 있습니다.",
+      "확인 포인트: 합의 시점, 증액·감액 항목, 후속 표결 일정을 확인하세요.",
+    ],
+    translatedSummaryLines: null,
+    originalLanguage: "ko",
     source: "샘플 국내 정치",
     region: "domestic",
     category: "politics",
@@ -34,7 +58,31 @@ const fallbackNews: NewsItem[] = [
   {
     id: "fallback-2",
     title: "주요국 중앙은행 발언 이후 환율 변동성 확대",
+    originalTitle: "Major currencies swing after central bank remarks",
+    translatedTitle: "주요국 중앙은행 발언 이후 환율 변동성 확대",
     summary: "금리 경로와 물가 전망에 대한 해석이 엇갈리며 금융시장이 민감하게 반응하고 있습니다.",
+    summaryLines: [
+      "핵심 이슈: 중앙은행 발언 뒤 환율 변동성이 커졌습니다.",
+      "영향 범위: 해외 경제와 국내 금융시장 모두에 파급될 수 있습니다.",
+      "중요도 판단: 79점으로 우선 확인이 필요한 기사입니다.",
+      "관련 맥락: 금리 경로와 물가 전망 해석이 엇갈리고 있습니다.",
+      "확인 포인트: 발언 원문, 달러 지수, 채권 금리 움직임을 확인하세요.",
+    ],
+    originalSummaryLines: [
+      "Core issue: Currency volatility widened after central bank remarks.",
+      "Impact range: The story can affect both global markets and Korean financial conditions.",
+      "Importance: The item scores 79 and should be checked early.",
+      "Context: Investors are weighing the path of rates and inflation.",
+      "Check: Read the original remarks, dollar index, and bond-yield moves.",
+    ],
+    translatedSummaryLines: [
+      "핵심 이슈: 중앙은행 발언 뒤 환율 변동성이 커졌습니다.",
+      "영향 범위: 해외 경제와 국내 금융시장 모두에 파급될 수 있습니다.",
+      "중요도 판단: 79점으로 우선 확인이 필요한 기사입니다.",
+      "관련 맥락: 금리 경로와 물가 전망 해석이 엇갈리고 있습니다.",
+      "확인 포인트: 발언 원문, 달러 지수, 채권 금리 움직임을 확인하세요.",
+    ],
+    originalLanguage: "en",
     source: "샘플 해외 경제",
     region: "global",
     category: "economy",
@@ -43,24 +91,17 @@ const fallbackNews: NewsItem[] = [
     url: "#",
     signals: ["시장 영향", "해외", "금리"],
   },
-  {
-    id: "fallback-3",
-    title: "전국 대중교통 파업 예고, 지자체 비상 수송 대책 발표",
-    summary: "출근길 혼잡 가능성이 커지면서 대체 교통편과 임시 운행 계획이 공개됐습니다.",
-    source: "샘플 국내 사회",
-    region: "domestic",
-    category: "society",
-    urgency: 74,
-    publishedAt: new Date(Date.now() - 1000 * 60 * 73).toISOString(),
-    url: "#",
-    signals: ["생활 영향", "교통", "국내"],
-  },
 ];
 
 const categoryLabels: Record<Category, string> = {
   politics: "정치",
   economy: "경제",
   society: "사회",
+};
+
+const languageLabels: Record<NewsItem["originalLanguage"], string> = {
+  ko: "한국어",
+  en: "영어",
 };
 
 const regionLabels: Record<Region | "all", string> = {
@@ -142,8 +183,7 @@ export default function Home() {
                 국내외 속보를 중요도 순으로 정리하는 뉴스 관제판
               </h1>
               <p className="mt-5 max-w-2xl text-base leading-7 text-[#536056]">
-                정치, 경제, 사회 뉴스를 한곳에서 모으고 제목의 긴급 신호, 영향 범위, 최신성을
-                기준으로 점수를 매겨 먼저 봐야 할 이슈를 위로 올립니다.
+                제목 아래 5줄 요약을 붙이고, 해외 기사는 원문과 한국어 번역을 함께 보여줍니다.
               </p>
             </div>
 
@@ -251,16 +291,65 @@ export default function Home() {
               </div>
               <div>
                 <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#657065]">
-                          <span>{index + 1}순위</span>
-                          <span>{regionLabels[item.region]}</span>
-                          <span>{categoryLabels[item.category]}</span>
-                          <span>{timeAgo(item.publishedAt, now)}</span>
+                  <span>{index + 1}순위</span>
+                  <span>{regionLabels[item.region]}</span>
+                  <span>{categoryLabels[item.category]}</span>
+                  <span>{timeAgo(item.publishedAt, now)}</span>
                   <span>{item.source}</span>
+                  {item.region === "global" && <span>원문: {languageLabels[item.originalLanguage]}</span>}
                 </div>
-                <h2 className="mt-2 text-xl font-semibold leading-snug text-[#17201b]">
+                <a
+                  className="mt-2 block text-xl font-semibold leading-snug text-[#17201b] underline-offset-4 hover:underline"
+                  href={item.url}
+                  rel="noreferrer"
+                  target="_blank"
+                >
                   {item.title}
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-[#536056]">{item.summary}</p>
+                </a>
+
+                {item.region === "global" && (
+                  <div className="mt-3 grid gap-3 border border-[#e1e5dd] bg-[#fafbf7] p-3 lg:grid-cols-2">
+                    <div>
+                      <p className="text-xs font-semibold text-[#657065]">원문 제목</p>
+                      <p className="mt-1 text-sm font-medium leading-6">{item.originalTitle}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-[#657065]">한국어 번역</p>
+                      <p className="mt-1 text-sm font-medium leading-6">
+                        {item.translatedTitle ?? item.title}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4">
+                  <p className="text-xs font-semibold text-[#657065]">5줄 요약</p>
+                  <ol className="mt-2 grid gap-1 text-sm leading-6 text-[#536056]">
+                    {item.summaryLines.slice(0, 5).map((line, lineIndex) => (
+                      <li className="flex gap-2" key={`${item.id}-summary-${lineIndex}`}>
+                        <span className="min-w-5 font-semibold text-[#d94f2b]">{lineIndex + 1}.</span>
+                        <span>{line}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+
+                {item.region === "global" && (
+                  <details className="mt-4 border-t border-[#e1e5dd] pt-3">
+                    <summary className="cursor-pointer text-sm font-semibold text-[#17201b]">
+                      원문 요약 같이 보기
+                    </summary>
+                    <ol className="mt-2 grid gap-1 text-sm leading-6 text-[#536056]">
+                      {item.originalSummaryLines.slice(0, 5).map((line, lineIndex) => (
+                        <li className="flex gap-2" key={`${item.id}-original-${lineIndex}`}>
+                          <span className="min-w-5 font-semibold text-[#56705f]">{lineIndex + 1}.</span>
+                          <span>{line}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </details>
+                )}
+
                 <div className="mt-3 flex flex-wrap gap-2">
                   {item.signals.map((signal) => (
                     <span className="bg-[#edf1eb] px-2 py-1 text-xs font-medium" key={signal}>
@@ -280,12 +369,12 @@ export default function Home() {
                   {item.urgency >= threshold ? "알림 대상" : "관찰"}
                 </span>
                 <a
-                  className="border border-[#17201b] px-3 py-2 text-sm font-semibold text-[#17201b]"
+                  className="border border-[#17201b] px-3 py-2 text-sm font-semibold text-[#17201b] hover:bg-[#17201b] hover:text-white"
                   href={item.url}
                   rel="noreferrer"
                   target="_blank"
                 >
-                  원문 보기
+                  원문 링크
                 </a>
               </div>
             </article>
