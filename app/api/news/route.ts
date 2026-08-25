@@ -7,25 +7,6 @@ type Source = {
   url: string;
 };
 
-type NewsItem = {
-  id: string;
-  title: string;
-  originalTitle: string;
-  translatedTitle: string | null;
-  summary: string;
-  summaryLines: string[];
-  originalSummaryLines: string[];
-  translatedSummaryLines: string[] | null;
-  originalLanguage: "ko" | "en";
-  source: string;
-  region: Region;
-  category: Category;
-  urgency: number;
-  publishedAt: string;
-  url: string;
-  signals: string[];
-};
-
 const sources: Source[] = [
   {
     name: "Google News Korea",
@@ -113,6 +94,7 @@ const englishToKorean: Array<[RegExp, string]> = [
   [/\bstock futures\b/gi, "주가지수 선물"],
   [/\bstocks\b/gi, "주식"],
   [/\bmarket\b/gi, "시장"],
+  [/\bmarkets\b/gi, "시장"],
   [/\binvestors\b/gi, "투자자들"],
   [/\binflation\b/gi, "인플레이션"],
   [/\bearnings\b/gi, "실적"],
@@ -129,14 +111,22 @@ const englishToKorean: Array<[RegExp, string]> = [
   [/\blive updates\b/gi, "실시간 업데이트"],
   [/\breport\b/gi, "보고서"],
   [/\bawait\b/gi, "기다리다"],
+  [/\bawaits\b/gi, "기다리다"],
   [/\bhigher\b/gi, "상승"],
   [/\blower\b/gi, "하락"],
   [/\bnvidia\b/gi, "엔비디아"],
+  [/\bfed\b/gi, "미 연준"],
+  [/\btariff\b/gi, "관세"],
+  [/\btariffs\b/gi, "관세"],
 ];
 
-function getTagValue(item: string, tag: string) {
+function getRawTagValue(item: string, tag: string) {
   const match = item.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
-  return decodeXml(match?.[1] ?? "");
+  return match?.[1] ?? "";
+}
+
+function getTagValue(item: string, tag: string) {
+  return decodeXml(getRawTagValue(item, tag));
 }
 
 function decodeEntities(value: string) {
@@ -159,14 +149,13 @@ function extractDescriptionLines(rawDescription: string) {
   const anchorTexts = Array.from(html.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/gi))
     .map((match) => decodeXml(match[1]))
     .filter(Boolean);
+  const plainText = decodeXml(rawDescription);
 
-  const text = decodeXml(rawDescription);
-  const candidates = [...anchorTexts, ...text.split(/\s+-\s+|\.\s+|;\s+/)]
+  return [...anchorTexts, ...plainText.split(/\s+-\s+|\.\s+|;\s+/)]
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter((line) => line.length > 8)
-    .filter((line, index, lines) => lines.indexOf(line) === index);
-
-  return candidates.slice(0, 5);
+    .filter((line, index, lines) => lines.indexOf(line) === index)
+    .slice(0, 3);
 }
 
 function inferCategory(text: string): Category {
@@ -184,30 +173,48 @@ function detectLanguage(text: string): "ko" | "en" {
   return /[가-힣]/.test(text) ? "ko" : "en";
 }
 
-function machineAssistKorean(text: string) {
+function roughTranslateToKorean(text: string) {
   let translated = text;
   for (const [pattern, replacement] of englishToKorean) {
     translated = translated.replace(pattern, replacement);
   }
 
-  if (translated === text) {
-    return `번역 준비 중: ${text}`;
-  }
-
-  return translated;
+  return translated === text ? "한국어 번역 준비 중" : translated;
 }
 
-function buildFiveLineSummary(lines: string[], title: string, region: Region, category: Category, urgency: number) {
-  const base = lines.length ? lines : [title];
-  const padded = [
-    `핵심 이슈: ${base[0] ?? title}`,
-    `영향 범위: ${region === "domestic" ? "국내" : "해외"} ${category === "politics" ? "정치" : category === "economy" ? "경제" : "사회"} 분야`,
-    `중요도 판단: ${urgency}점으로 ${urgency >= 75 ? "우선 확인이 필요한 기사" : "추적 관찰 기사"}입니다.`,
-    `관련 맥락: ${base[1] ?? "같은 주제의 후속 보도와 정책·시장 반응을 함께 확인하세요."}`,
-    `확인 포인트: 원문 링크에서 발표 주체, 숫자, 시간, 후속 조치를 확인하세요.`,
-  ];
+function categoryLabel(category: Category) {
+  if (category === "politics") return "정치";
+  if (category === "economy") return "경제";
+  return "사회";
+}
 
-  return padded.slice(0, 5);
+function buildKoreanSummary(lines: string[], title: string, region: Region, category: Category, urgency: number) {
+  const base = lines.length ? lines : [title];
+
+  return [
+    `${base[0] ?? title}가 현재 핵심 이슈입니다.`,
+    `${region === "domestic" ? "국내" : "해외"} ${categoryLabel(category)} 분야에 영향을 줄 수 있습니다.`,
+    `중요도는 ${urgency}점으로 ${urgency >= 75 ? "우선 확인이 필요합니다" : "추적 관찰할 만합니다"}.`,
+    `${base[1] ?? "후속 보도와 관련 기관의 반응을 함께 확인하는 것이 좋습니다."}`,
+    `원문에서 발표 주체, 숫자, 시점, 후속 조치를 확인하세요.`,
+  ];
+}
+
+function buildEnglishSummary(lines: string[], title: string, region: Region, category: Category, urgency: number) {
+  const base = lines.length ? lines : [title];
+  const scope = `${region === "domestic" ? "domestic" : "global"} ${category}`;
+
+  return [
+    `${base[0] ?? title} is the central issue in this story.`,
+    `The story may affect the ${scope} agenda.`,
+    `The urgency score is ${urgency}, so it ${urgency >= 75 ? "should be checked early" : "is worth monitoring"}.`,
+    `${base[1] ?? "Follow-up reports and official reactions should be watched."}`,
+    `Check the original source for names, numbers, timing, and next steps.`,
+  ];
+}
+
+function pairEnglishWithKorean(englishLines: string[]) {
+  return englishLines.map((line) => `${line} (${roughTranslateToKorean(line)})`);
 }
 
 function scoreItem(text: string, publishedAt: string, region: Region, category: Category) {
@@ -224,7 +231,7 @@ function scoreItem(text: string, publishedAt: string, region: Region, category: 
   return Math.min(98, Math.round(35 + urgentHits * 12 + impactHits * 6 + freshness + categoryWeight + regionWeight));
 }
 
-async function readSource(source: Source): Promise<NewsItem[]> {
+async function readSource(source: Source) {
   const response = await fetch(source.url, {
     headers: { "User-Agent": "SignalDesk/1.0" },
     next: { revalidate: 300 },
@@ -233,31 +240,27 @@ async function readSource(source: Source): Promise<NewsItem[]> {
   const rawItems = xml.match(/<item>[\s\S]*?<\/item>/gi) ?? [];
 
   return rawItems.slice(0, 12).map((item, index) => {
-    const title = getTagValue(item, "title");
-    const rawDescription = item.match(/<description[^>]*>([\s\S]*?)<\/description>/i)?.[1] ?? "";
+    const originalTitle = getTagValue(item, "title");
+    const rawDescription = getRawTagValue(item, "description");
     const descriptionLines = extractDescriptionLines(rawDescription);
     const descriptionText = descriptionLines.join(" ");
     const publishedAt = new Date(getTagValue(item, "pubDate") || Date.now()).toISOString();
-    const category = inferCategory(`${title} ${descriptionText}`);
-    const urgency = scoreItem(`${title} ${descriptionText}`, publishedAt, source.region, category);
-    const originalLanguage = source.region === "global" ? detectLanguage(title) : "ko";
-    const summaryLines = buildFiveLineSummary(descriptionLines, title, source.region, category, urgency);
-    const translatedTitle =
-      source.region === "global" && originalLanguage !== "ko" ? machineAssistKorean(title) : null;
-    const translatedSummaryLines =
-      source.region === "global" && originalLanguage !== "ko"
-        ? summaryLines.map((line) => machineAssistKorean(line))
-        : null;
+    const category = inferCategory(`${originalTitle} ${descriptionText}`);
+    const urgency = scoreItem(`${originalTitle} ${descriptionText}`, publishedAt, source.region, category);
+    const originalLanguage = source.region === "global" ? detectLanguage(originalTitle) : "ko";
+    const summaryLines =
+      originalLanguage === "en"
+        ? pairEnglishWithKorean(buildEnglishSummary(descriptionLines, originalTitle, source.region, category, urgency))
+        : buildKoreanSummary(descriptionLines, originalTitle, source.region, category, urgency);
+    const translatedTitle = originalLanguage === "en" ? roughTranslateToKorean(originalTitle) : null;
 
     return {
-      id: `${source.name}-${index}-${title}`,
-      title: translatedTitle ?? title,
-      originalTitle: title,
+      id: `${source.name}-${index}-${originalTitle}`,
+      title: translatedTitle ? `${originalTitle} (${translatedTitle})` : originalTitle,
+      originalTitle,
       translatedTitle,
       summary: summaryLines.join(" "),
-      summaryLines: translatedSummaryLines ?? summaryLines,
-      originalSummaryLines: summaryLines,
-      translatedSummaryLines,
+      summaryLines,
       originalLanguage,
       source: source.name,
       region: source.region,
