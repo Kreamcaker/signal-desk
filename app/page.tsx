@@ -11,7 +11,6 @@ type NewsItem = {
   originalTitle: string;
   translatedTitle: string | null;
   summary: string;
-  summaryLines: string[];
   originalLanguage: "ko" | "en";
   source: string;
   region: Region;
@@ -28,14 +27,8 @@ const fallbackNews: NewsItem[] = [
     title: "국회, 예산안 핵심 쟁점 협상 재개",
     originalTitle: "국회, 예산안 핵심 쟁점 협상 재개",
     translatedTitle: null,
-    summary: "여야가 예산안 쟁점 조율을 재개했습니다.",
-    summaryLines: [
-      "여야가 예산안 쟁점 조율을 재개했습니다.",
-      "국내 정치와 민생 예산 집행 일정에 영향을 줄 수 있습니다.",
-      "중요도는 86점으로 우선 확인이 필요합니다.",
-      "세입 전망과 지출 우선순위를 둘러싼 협상이 이어지고 있습니다.",
-      "합의 시점, 증액·감액 항목, 후속 표결 일정을 확인하세요.",
-    ],
+    summary:
+      "여야가 예산안 핵심 쟁점에 대한 협상을 다시 시작하면서 민생 예산과 세입 전망, 지출 우선순위를 둘러싼 막판 조율이 이어지고 있습니다. 합의 시점과 증액·감액 항목, 후속 표결 일정에 따라 정부 예산 집행과 정치권 협상 흐름이 달라질 수 있습니다.",
     originalLanguage: "ko",
     source: "샘플 국내 정치",
     region: "domestic",
@@ -50,14 +43,8 @@ const fallbackNews: NewsItem[] = [
     title: "Major currencies swing after central bank remarks (주요국 중앙은행 발언 이후 환율 변동성 확대)",
     originalTitle: "Major currencies swing after central bank remarks",
     translatedTitle: "주요국 중앙은행 발언 이후 환율 변동성 확대",
-    summary: "Currency volatility widened after central bank remarks.",
-    summaryLines: [
-      "Currency volatility widened after central bank remarks. (중앙은행 발언 뒤 환율 변동성이 커졌습니다.)",
-      "The story may affect global economy and Korean financial markets. (해외 경제와 국내 금융시장 모두에 영향을 줄 수 있습니다.)",
-      "The urgency score is 79, so it should be checked early. (중요도는 79점으로 우선 확인이 필요합니다.)",
-      "Investors are weighing the path of rates and inflation. (투자자들은 금리 경로와 물가 전망을 주시하고 있습니다.)",
-      "Check the original remarks, dollar index, and bond-yield moves. (발언 원문, 달러 지수, 채권 금리 움직임을 확인하세요.)",
-    ],
+    summary:
+      "Currency volatility widened after central bank remarks as investors weighed the path of rates and inflation, with the move likely to affect global markets and Korean financial conditions. (중앙은행 발언 이후 투자자들이 금리 경로와 물가 전망을 다시 해석하면서 환율 변동성이 커졌고, 이 흐름은 해외 시장과 국내 금융 여건에도 영향을 줄 수 있습니다.)",
     originalLanguage: "en",
     source: "샘플 해외 경제",
     region: "global",
@@ -284,12 +271,8 @@ export default function Home() {
                 </a>
 
                 <div className="mt-4">
-                  <p className="text-xs font-semibold text-[#657065]">요약</p>
-                  <div className="mt-2 grid gap-1.5 text-sm leading-6 text-[#536056]">
-                    {item.summaryLines.slice(0, 5).map((line, lineIndex) => (
-                      <p key={`${item.id}-summary-${lineIndex}`}>{line}</p>
-                    ))}
-                  </div>
+                  <p className="text-xs font-semibold text-[#657065]">본문 요약</p>
+                  <p className="mt-2 text-sm leading-7 text-[#536056]">{item.summary}</p>
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-2">

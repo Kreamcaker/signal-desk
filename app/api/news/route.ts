@@ -158,6 +158,39 @@ function extractDescriptionLines(rawDescription: string) {
     .slice(0, 3);
 }
 
+function extractArticleText(html: string) {
+  const metaDescription =
+    html.match(/<meta[^>]+(?:name|property)=["'](?:description|og:description)["'][^>]+content=["']([^"']+)["']/i)?.[1] ??
+    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:name|property)=["'](?:description|og:description)["']/i)?.[1] ??
+    "";
+  const paragraphs = Array.from(html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi))
+    .map((match) => decodeXml(match[1]))
+    .filter((text) => text.length > 40)
+    .slice(0, 6);
+  const text = [decodeEntities(metaDescription), ...paragraphs]
+    .map((line) => decodeXml(line))
+    .filter(Boolean)
+    .filter((line, index, lines) => lines.indexOf(line) === index)
+    .join(" ");
+
+  return text.replace(/\s+/g, " ").trim();
+}
+
+async function fetchArticleText(url: string) {
+  if (!url || url === "#") return "";
+
+  try {
+    const response = await fetch(url, {
+      headers: { "User-Agent": "SignalDesk/1.0" },
+      signal: AbortSignal.timeout(2500),
+    });
+    const html = await response.text();
+    return extractArticleText(html);
+  } catch {
+    return "";
+  }
+}
+
 function inferCategory(text: string): Category {
   const lower = text.toLowerCase();
   const scores = Object.entries(categoryKeywords).map(([category, keywords]) => ({
@@ -188,33 +221,23 @@ function categoryLabel(category: Category) {
   return "사회";
 }
 
-function buildKoreanSummary(lines: string[], title: string, region: Region, category: Category, urgency: number) {
-  const base = lines.length ? lines : [title];
-
-  return [
-    `${base[0] ?? title}가 현재 핵심 이슈입니다.`,
-    `${region === "domestic" ? "국내" : "해외"} ${categoryLabel(category)} 분야에 영향을 줄 수 있습니다.`,
-    `중요도는 ${urgency}점으로 ${urgency >= 75 ? "우선 확인이 필요합니다" : "추적 관찰할 만합니다"}.`,
-    `${base[1] ?? "후속 보도와 관련 기관의 반응을 함께 확인하는 것이 좋습니다."}`,
-    `원문에서 발표 주체, 숫자, 시점, 후속 조치를 확인하세요.`,
-  ];
+function shortenText(text: string, maxLength = 420) {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= maxLength) return cleaned;
+  const truncated = cleaned.slice(0, maxLength);
+  const sentenceEnd = Math.max(truncated.lastIndexOf("."), truncated.lastIndexOf("다."), truncated.lastIndexOf("?"));
+  return `${truncated.slice(0, sentenceEnd > 120 ? sentenceEnd + 1 : maxLength).trim()}...`;
 }
 
-function buildEnglishSummary(lines: string[], title: string, region: Region, category: Category, urgency: number) {
-  const base = lines.length ? lines : [title];
-  const scope = `${region === "domestic" ? "domestic" : "global"} ${category}`;
+function buildSummaryParagraph(text: string, title: string, originalLanguage: "ko" | "en") {
+  const sourceText = text || title;
+  const summary = shortenText(sourceText);
 
-  return [
-    `${base[0] ?? title} is the central issue in this story.`,
-    `The story may affect the ${scope} agenda.`,
-    `The urgency score is ${urgency}, so it ${urgency >= 75 ? "should be checked early" : "is worth monitoring"}.`,
-    `${base[1] ?? "Follow-up reports and official reactions should be watched."}`,
-    `Check the original source for names, numbers, timing, and next steps.`,
-  ];
-}
+  if (originalLanguage === "en") {
+    return `${summary} (${roughTranslateToKorean(summary)})`;
+  }
 
-function pairEnglishWithKorean(englishLines: string[]) {
-  return englishLines.map((line) => `${line} (${roughTranslateToKorean(line)})`);
+  return summary;
 }
 
 function fallbackUrlFor(title: string) {
@@ -243,7 +266,7 @@ async function readSource(source: Source) {
   const xml = await response.text();
   const rawItems = xml.match(/<item>[\s\S]*?<\/item>/gi) ?? [];
 
-  return rawItems.slice(0, 12).map((item, index) => {
+  const parsedItems = rawItems.slice(0, 12).map((item, index) => {
     const originalTitle = getTagValue(item, "title");
     const rawDescription = getRawTagValue(item, "description");
     const descriptionLines = extractDescriptionLines(rawDescription);
@@ -252,26 +275,23 @@ async function readSource(source: Source) {
     const category = inferCategory(`${originalTitle} ${descriptionText}`);
     const urgency = scoreItem(`${originalTitle} ${descriptionText}`, publishedAt, source.region, category);
     const originalLanguage = source.region === "global" ? detectLanguage(originalTitle) : "ko";
-    const summaryLines =
-      originalLanguage === "en"
-        ? pairEnglishWithKorean(buildEnglishSummary(descriptionLines, originalTitle, source.region, category, urgency))
-        : buildKoreanSummary(descriptionLines, originalTitle, source.region, category, urgency);
     const translatedTitle = originalLanguage === "en" ? roughTranslateToKorean(originalTitle) : null;
+    const url = getTagValue(item, "link") || fallbackUrlFor(originalTitle);
 
     return {
       id: `${source.name}-${index}-${originalTitle}`,
       title: translatedTitle ? `${originalTitle} (${translatedTitle})` : originalTitle,
       originalTitle,
       translatedTitle,
-      summary: summaryLines.join(" "),
-      summaryLines,
+      summary: "",
+      summarySourceText: descriptionText,
       originalLanguage,
       source: source.name,
       region: source.region,
       category,
       urgency,
       publishedAt,
-      url: getTagValue(item, "link") || fallbackUrlFor(originalTitle),
+      url,
       signals: [
         source.region === "domestic" ? "국내" : "해외",
         category === "politics" ? "정책 영향" : category === "economy" ? "시장 영향" : "생활 영향",
@@ -279,6 +299,17 @@ async function readSource(source: Source) {
       ],
     };
   });
+
+  return Promise.all(
+    parsedItems.map(async (item) => {
+      const articleText = await fetchArticleText(item.url);
+      return {
+        ...item,
+        summary: buildSummaryParagraph(articleText || item.summarySourceText, item.originalTitle, item.originalLanguage),
+        summarySourceText: undefined,
+      };
+    }),
+  );
 }
 
 export async function GET() {
