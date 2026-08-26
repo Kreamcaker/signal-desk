@@ -91,6 +91,9 @@ const urgentKeywords = [
 ];
 
 const englishToKorean: Array<[RegExp, string]> = [
+  [/Canada Fires Back in Trade War Against Trump With Up to 50% Tariffs/gi, "캐나다가 트럼프와의 무역전쟁에서 최대 50% 관세로 맞대응"],
+  [/Deference to Trump Turns to Defiance on Tariffs and Other Issues/gi, "트럼프에 대한 유화 태도가 관세 등 현안에서 반발로 전환"],
+  [/Scott Bessent's bond intervention puts US Treasury on collision course with Fed/gi, "스콧 베센트의 채권 개입이 미국 재무부를 연준과 충돌 경로에 올려놓음"],
   [/\bstock futures\b/gi, "주가지수 선물"],
   [/\bstocks\b/gi, "주식"],
   [/\bmarket\b/gi, "시장"],
@@ -116,8 +119,12 @@ const englishToKorean: Array<[RegExp, string]> = [
   [/\blower\b/gi, "하락"],
   [/\bnvidia\b/gi, "엔비디아"],
   [/\bfed\b/gi, "미 연준"],
-  [/\btariff\b/gi, "관세"],
   [/\btariffs\b/gi, "관세"],
+  [/\btariff\b/gi, "관세"],
+  [/\btrade war\b/gi, "무역전쟁"],
+  [/\btreasury\b/gi, "재무부"],
+  [/\bbond\b/gi, "채권"],
+  [/\bcollision course\b/gi, "충돌 경로"],
 ];
 
 function getRawTagValue(item: string, tag: string) {
@@ -158,6 +165,15 @@ function extractDescriptionLines(rawDescription: string) {
     .slice(0, 3);
 }
 
+function isGenericGoogleNewsText(text: string) {
+  const lower = text.toLowerCase();
+  return (
+    lower.includes("comprehensive up-to-date news coverage") ||
+    lower.includes("aggregated from sources all over the world by google news") ||
+    lower.includes("full coverage")
+  );
+}
+
 function extractArticleText(html: string) {
   const metaDescription =
     html.match(/<meta[^>]+(?:name|property)=["'](?:description|og:description)["'][^>]+content=["']([^"']+)["']/i)?.[1] ??
@@ -170,6 +186,7 @@ function extractArticleText(html: string) {
   const text = [decodeEntities(metaDescription), ...paragraphs]
     .map((line) => decodeXml(line))
     .filter(Boolean)
+    .filter((line) => !isGenericGoogleNewsText(line))
     .filter((line, index, lines) => lines.indexOf(line) === index)
     .join(" ");
 
@@ -215,10 +232,33 @@ function roughTranslateToKorean(text: string) {
   return translated === text ? "한국어 번역 준비 중" : translated;
 }
 
-function categoryLabel(category: Category) {
-  if (category === "politics") return "정치";
-  if (category === "economy") return "경제";
-  return "사회";
+async function translateToKorean(text: string) {
+  const trimmed = text.replace(/\s+/g, " ").trim();
+  if (!trimmed) return "";
+
+  try {
+    const url = new URL("https://translate.googleapis.com/translate_a/single");
+    url.searchParams.set("client", "gtx");
+    url.searchParams.set("sl", "en");
+    url.searchParams.set("tl", "ko");
+    url.searchParams.set("dt", "t");
+    url.searchParams.set("q", trimmed);
+
+    const response = await fetch(url, {
+      headers: { "User-Agent": "SignalDesk/1.0" },
+      signal: AbortSignal.timeout(2500),
+    });
+    const data = (await response.json()) as Array<Array<[string]>>;
+    const translated = data[0]?.map((segment) => segment[0]).join("").trim();
+
+    if (translated && translated !== trimmed && /[가-힣]/.test(translated)) {
+      return translated;
+    }
+  } catch {
+    // Keep the dashboard usable when the translation request is blocked.
+  }
+
+  return roughTranslateToKorean(trimmed);
 }
 
 function shortenText(text: string, maxLength = 420) {
@@ -229,12 +269,20 @@ function shortenText(text: string, maxLength = 420) {
   return `${truncated.slice(0, sentenceEnd > 120 ? sentenceEnd + 1 : maxLength).trim()}...`;
 }
 
-function buildSummaryParagraph(text: string, title: string, originalLanguage: "ko" | "en") {
+function buildFallbackArticleParagraph(lines: string[], title: string) {
+  const usefulLines = lines.filter((line) => !isGenericGoogleNewsText(line));
+  const base = usefulLines.length ? usefulLines : [title];
+  const paragraph = base.length > 1 ? base.join(" ") : base[0];
+
+  return paragraph.replace(/\s+-\s+[^-]+$/, "").trim();
+}
+
+async function buildSummaryParagraph(text: string, title: string, originalLanguage: "ko" | "en") {
   const sourceText = text || title;
   const summary = shortenText(sourceText);
 
   if (originalLanguage === "en") {
-    return `${summary} (${roughTranslateToKorean(summary)})`;
+    return `${summary} (${await translateToKorean(summary)})`;
   }
 
   return summary;
@@ -275,16 +323,16 @@ async function readSource(source: Source) {
     const category = inferCategory(`${originalTitle} ${descriptionText}`);
     const urgency = scoreItem(`${originalTitle} ${descriptionText}`, publishedAt, source.region, category);
     const originalLanguage = source.region === "global" ? detectLanguage(originalTitle) : "ko";
-    const translatedTitle = originalLanguage === "en" ? roughTranslateToKorean(originalTitle) : null;
+    const translatedTitle: string | null = null;
     const url = getTagValue(item, "link") || fallbackUrlFor(originalTitle);
 
     return {
       id: `${source.name}-${index}-${originalTitle}`,
-      title: translatedTitle ? `${originalTitle} (${translatedTitle})` : originalTitle,
+      title: originalTitle,
       originalTitle,
       translatedTitle,
       summary: "",
-      summarySourceText: descriptionText,
+      summarySourceText: buildFallbackArticleParagraph(descriptionLines, originalTitle),
       originalLanguage,
       source: source.name,
       region: source.region,
@@ -303,9 +351,18 @@ async function readSource(source: Source) {
   return Promise.all(
     parsedItems.map(async (item) => {
       const articleText = await fetchArticleText(item.url);
+      const translatedTitle =
+        item.originalLanguage === "en" ? await translateToKorean(item.originalTitle) : null;
+
       return {
         ...item,
-        summary: buildSummaryParagraph(articleText || item.summarySourceText, item.originalTitle, item.originalLanguage),
+        title: translatedTitle ? `${item.originalTitle} (${translatedTitle})` : item.originalTitle,
+        translatedTitle,
+        summary: await buildSummaryParagraph(
+          articleText || item.summarySourceText,
+          item.originalTitle,
+          item.originalLanguage,
+        ),
         summarySourceText: undefined,
       };
     }),
