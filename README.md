@@ -1,100 +1,75 @@
-# vinext-starter
+# Signal Desk
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+국내외 정치·경제·사회 뉴스를 모아 중요도 순으로 보여주는 뉴스 대시보드입니다.
+여러 뉴스 피드를 한 화면에서 확인하고 지역·분야·중요도 기준으로 기사를 추려볼 수 있습니다.
 
-## Prerequisites
+## 주요 기능
 
-- Node.js `>=22.13.0`
+- Google News 국내·해외·비즈니스 RSS 수집
+- 키워드 기반 정치·경제·사회 분류
+- 긴급·영향 키워드와 기사 최신성 등을 반영한 중요도 점수 및 정렬
+- 국내·해외, 카테고리, 중요도 임계값에 따른 뉴스 필터
+- 해외 기사 제목과 요약 문단에 한국어 번역 병기
+- 5분 간격 자동 갱신, 뉴스 요청 실패 시 샘플 데이터 표시
+- 기사 원문 링크 제공
 
-## Quick Start
+## 기술 구성
+
+| 영역 | 사용 기술 |
+| --- | --- |
+| 화면 | React 19, TypeScript, Tailwind CSS 4 |
+| 실행·빌드 | vinext, Vite 8 |
+| 서버 | 파일 기반 /api/news 라우트, Fetch API |
+| 배포 구성 | Cloudflare Workers용 빌드 설정, Sites 호스팅 구성 |
+
+Drizzle 및 D1 예제는 초기 템플릿에 포함된 구성입니다. 현재 뉴스 기능은 데이터베이스를 사용하지 않습니다.
+
+## 로컬 실행
+
+Node.js 22.13.0 이상이 필요합니다.
 
 ```bash
-npm install
+npm ci
 npm run dev
+```
+
+터미널에 표시되는 로컬 주소로 접속합니다. 뉴스 수집과 번역에는 인터넷 연결이 필요하며 현재 구현에서는 별도 API 키를 입력하지 않습니다.
+
+```bash
 npm run build
+npm run lint
 ```
 
-This starter does not use `wrangler.jsonc`.
+`npm test`에는 초기 템플릿의 로딩 화면 테스트가 남아 있어 현재 뉴스 화면과 일치하지 않습니다. 뉴스 기능을 검증하는 테스트로 교체해야 합니다.
 
-## Included Shape
+## 동작 흐름
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
+1. 클라이언트가 /api/news에 뉴스 목록을 요청합니다.
+2. 서버가 RSS 피드를 병렬 수집하고 기사 제목·발행 시각·링크를 추출합니다.
+3. 키워드로 분야와 중요도 점수를 계산합니다.
+4. 기사 본문 추출을 시도하고 실패하면 RSS 설명이나 제목을 사용합니다.
+5. 영어 기사에 한국어 번역을 추가하고 중요도순으로 최대 24개를 반환합니다.
+6. 클라이언트가 선택한 필터를 적용해 표시합니다.
 
-## Workspace Auth Headers
+## 프로젝트 구조
 
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
-
-The user ID is stable for the same user on the same Site and different across Sites. Email and name are intended for display or contact purposes.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```text
+app/
+  page.tsx             # 뉴스 목록, 필터, 자동 갱신
+  api/news/route.ts    # RSS 수집, 분류, 점수 계산, 번역
+  globals.css          # 공통 스타일
+  layout.tsx           # 메타데이터 및 레이아웃
+public/                # 아이콘 등 정적 파일
+worker/                # Worker 진입점
+build/                 # Sites 빌드 지원
+examples/d1/           # 템플릿에 포함된 DB 예제
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+## 현재 한계와 개선 방향
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
-
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+- 중요도는 자체 규칙에 따른 점수이며 언론사의 공식 속보 등급이나 사실 검증 결과가 아닙니다.
+- 분야 분류와 번역 대체 로직은 키워드 기반이므로 오분류·부자연스러운 번역이 생길 수 있습니다.
+- 요약은 본문이나 RSS 설명을 추출·축약하는 방식이며 생성형 AI 요약을 사용하지 않습니다.
+- 외부 피드, 기사 페이지, 번역 서비스의 응답과 접근 정책에 따라 수집 결과가 달라질 수 있습니다.
+- 수집 실패 시 표시되는 샘플 뉴스는 실제 최신 기사로 간주하면 안 됩니다.
+- 향후 개선: 뉴스 기능 테스트, 중복 기사 통합, 수집 캐시, 분류·번역 품질 개선.
